@@ -47,3 +47,16 @@ CHROMIUM_PATH=/usr/bin/chromium node tests/dashboard.cjs
 ```
 
 검증 범위: 원본 집계, 필터 조합과 매장 연동, 일/주/월 차트, 직접 설정 날짜, 빈 결과와 잘못된 기간, 검색, 정렬, 페이지 이동, 다운로드된 CSV, 모바일 가로 넘침, 데이터 로딩 실패.
+
+## Vercel 배포
+
+이 저장소를 Vercel 프로젝트에 연결하고 Production Branch를 `main`, Root Directory를 저장소 루트로 설정하세요. `vercel.json`에 프레임워크 자동 감지 해제, 빌드 명령 `node scripts/build.cjs`, 배포 폴더 `dist`가 지정되어 있습니다. 외부 패키지 설치나 환경변수 없이 빌드됩니다. Git 연동이 활성화되어 있으면 `main` 푸시가 새 배포를 시작합니다.
+
+로컬에서 배포 산출물을 확인하려면:
+
+```sh
+node scripts/build.cjs
+python3 -m http.server 8000 --bind 0.0.0.0 --directory dist
+```
+
+배포 산출물은 `index.html`, `styles.css`, `app.js`, `data/sales.json`입니다. 테스트 코드와 데이터 변환 도구, README는 포함하지 않습니다.

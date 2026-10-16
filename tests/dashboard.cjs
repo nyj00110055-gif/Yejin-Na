@@ -2,6 +2,7 @@
 const {chromium} = require('playwright');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const baseUrl = process.env.DASHBOARD_URL || 'http://127.0.0.1:8000';
 const path = require('node:path');
 (async()=>{
  const rows=JSON.parse(fs.readFileSync(path.join(__dirname,'../data/sales.json'),'utf8'));
@@ -12,7 +13,7 @@ const path = require('node:path');
  const browser=await chromium.launch({headless:true, ...(process.env.CHROMIUM_PATH ? {executablePath:process.env.CHROMIUM_PATH} : {})});
  const page=await browser.newPage({viewport:{width:1440,height:1100}});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto('http://127.0.0.1:8000');await page.waitForSelector('#dashboard:not([hidden])');
+ await page.goto(baseUrl);await page.waitForSelector('#dashboard:not([hidden])');
  const count=async()=>Number((await page.locator('#record-count').innerText()).replaceAll(',',''));
  const revenue=async()=>Number((await page.locator('.kpi-value').first().innerText()).replace(/[^0-9]/g,''));
  assert.equal(await count(),1017);assert.equal(await revenue(),515999400);
@@ -42,6 +43,6 @@ const path = require('node:path');
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:'/tmp/dashboard-mobile.png',fullPage:true});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
  assert.deepEqual(errors,[]);
- const failure=await browser.newPage();await failure.route('**/data/sales.json',route=>route.fulfill({status:500,body:'failure'}));await failure.goto('http://127.0.0.1:8000');await failure.waitForSelector('#error:not([hidden])');assert(await failure.locator('#export').isDisabled());
+ const failure=await browser.newPage();await failure.route('**/data/sales.json',route=>route.fulfill({status:500,body:'failure'}));await failure.goto(baseUrl);await failure.waitForSelector('#error:not([hidden])');assert(await failure.locator('#export').isDisabled());
  await browser.close();console.log('PASS: source totals, all filter combinations, dependent store options, three chart grains, custom dates, invalid/empty states, search, sort, pagination, CSV contents, mobile overflow, and load failure.');
 })().catch(error=>{console.error(error);process.exit(1);});
