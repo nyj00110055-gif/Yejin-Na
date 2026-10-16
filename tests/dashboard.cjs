@@ -1,0 +1,47 @@
+// Run with Playwright installed and the HTTP server running on port 8000.
+const {chromium} = require('playwright');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+(async()=>{
+ const rows=JSON.parse(fs.readFileSync(path.join(__dirname,'../data/sales.json'),'utf8'));
+ assert.equal(rows.length,1017);
+ assert.equal(rows.reduce((s,r)=>s+r.revenue,0),515999400);
+ assert.equal(rows.reduce((s,r)=>s+(r.quantity??0),0),1722);
+ assert.equal(rows.filter(r=>r.quantity===null).length,5);
+ const browser=await chromium.launch({headless:true, ...(process.env.CHROMIUM_PATH ? {executablePath:process.env.CHROMIUM_PATH} : {})});
+ const page=await browser.newPage({viewport:{width:1440,height:1100}});
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('http://127.0.0.1:8000');await page.waitForSelector('#dashboard:not([hidden])');
+ const count=async()=>Number((await page.locator('#record-count').innerText()).replaceAll(',',''));
+ const revenue=async()=>Number((await page.locator('.kpi-value').first().innerText()).replace(/[^0-9]/g,''));
+ assert.equal(await count(),1017);assert.equal(await revenue(),515999400);
+ assert.equal(await page.locator('#table-body tr').count(),10);
+ await page.screenshot({path:'/tmp/dashboard-desktop.png',fullPage:true});
+ await page.selectOption('#period','2026-08');await page.selectOption('#region','서울');
+ const expected=rows.filter(r=>r.date.startsWith('2026-08')&&r.region==='서울');
+ assert.equal(await count(),expected.length);assert.equal(await revenue(),expected.reduce((s,r)=>s+r.revenue,0));
+ const stores=await page.locator('#store option').allTextContents();assert.equal(stores.length,5);assert(!stores.includes('성남점'));
+ await page.selectOption('#store','홍대점');await page.selectOption('#category','기기');
+ const subset=expected.filter(r=>r.store==='홍대점'&&r.category==='기기');
+ assert.equal(await count(),subset.length);assert.equal(await revenue(),subset.reduce((s,r)=>s+r.revenue,0));
+ await page.selectOption('#region','부산');assert.equal(await page.inputValue('#store'),'all');
+ await page.click('#reset');assert.equal(await count(),1017);
+ for(const grain of ['day','month','week']){await page.click(`[data-grain="${grain}"]`);assert(await page.locator('#trend-chart svg').count());}
+ await page.selectOption('#period','custom');await page.fill('#start-date','2026-07-15');await page.fill('#end-date','2026-07-20');await page.locator('#end-date').dispatchEvent('change');
+ assert.equal(await count(),rows.filter(r=>r.date>='2026-07-15'&&r.date<='2026-07-20').length);
+ await page.fill('#start-date','2026-09-20');await page.locator('#start-date').dispatchEvent('change');
+ assert.equal(await count(),0);assert.equal(await page.locator('#error').isVisible(),true);assert.equal(await page.locator('#export').isDisabled(),true);
+ await page.click('#reset');await page.fill('#search','존재하지않는검색');assert.equal(await page.locator('#table-body tr').count(),1);assert.equal(await page.locator('#export').isDisabled(),true);
+ await page.fill('#search','강남점');await page.click('[data-sort="revenue"]');
+ const cells=await page.locator('#table-body tr td:nth-child(7)').allTextContents();
+ const nums=cells.map(s=>Number(s.replace(/[^0-9]/g,'')));assert.deepEqual(nums,[...nums].sort((a,b)=>b-a));
+ const downloadPromise=page.waitForEvent('download');await page.click('#export');const download=await downloadPromise;const file=await download.path();const csv=fs.readFileSync(file,'utf8');
+ assert(csv.startsWith('\ufeff'));assert.equal(csv.split('\r\n').length-1,rows.filter(r=>r.store==='강남점').length);
+ await page.fill('#search','');await page.click('#next');assert.equal(await page.locator('#page-number').innerText(),'2 / 102');await page.click('#prev');
+ await page.setViewportSize({width:390,height:844});await page.screenshot({path:'/tmp/dashboard-mobile.png',fullPage:true});
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
+ assert.deepEqual(errors,[]);
+ const failure=await browser.newPage();await failure.route('**/data/sales.json',route=>route.fulfill({status:500,body:'failure'}));await failure.goto('http://127.0.0.1:8000');await failure.waitForSelector('#error:not([hidden])');assert(await failure.locator('#export').isDisabled());
+ await browser.close();console.log('PASS: source totals, all filter combinations, dependent store options, three chart grains, custom dates, invalid/empty states, search, sort, pagination, CSV contents, mobile overflow, and load failure.');
+})().catch(error=>{console.error(error);process.exit(1);});
