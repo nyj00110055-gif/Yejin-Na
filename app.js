@@ -3,7 +3,7 @@ const $ = selector => document.querySelector(selector);
 const fmt = value => new Intl.NumberFormat('ko-KR').format(value);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const colors = ['#8870df','#b49bec','#cfbff1','#e2d9f4','#eae5f6'];
-const state = {data: [], filtered: [], searched: [], grain: 'week', page: 1, sort: 'date', direction: -1};
+const state = {data: [], filtered: [], searched: [], grain: 'week', page: 1, sort: 'date', direction: -1, range: ['2026-07-01','2026-09-30']};
 const PAGE_SIZE = 10;
 const compact = value => value >= 100000000 ? `${(value / 100000000).toFixed(2)}억` : `${fmt(Math.round(value / 10000))}만`;
 const total = (rows, key) => rows.reduce((sum, row) => sum + (row[key] ?? 0), 0);
@@ -24,8 +24,9 @@ function fillOptions(selector, values, first) {
 function getRange() {
   const period = $('#period').value;
   if (period === 'custom') return [$('#start-date').value, $('#end-date').value];
-  if (period === 'all') return ['2026-07-01', '2026-09-30'];
-  return [`${period}-01`, `${period}-${period === '2026-08' || period === '2026-07' ? '31' : '30'}`];
+  if (period === 'all') return state.range;
+  const [year,month]=period.split('-').map(Number);
+  return [`${period}-01`, `${period}-${new Date(Date.UTC(year,month,0)).getUTCDate()}`];
 }
 function update() {
   const [start, end] = getRange();
@@ -68,8 +69,8 @@ function renderTrend(start,end,valid) {
     $('#trend-summary').textContent = '선택 조건을 변경해보세요'; return;
   }
   // Bound chart iteration to the source coverage even for a custom range outside it.
-  start = start < '2026-07-01' ? '2026-07-01' : start;
-  end = end > '2026-09-30' ? '2026-09-30' : end;
+  start = start < state.range[0] ? state.range[0] : start;
+  end = end > state.range[1] ? state.range[1] : end;
   const sums = new Map();
   for (let d = utcDate(start); isoDate(d) <= end; d.setUTCDate(d.getUTCDate()+1)) sums.set(bucketKey(isoDate(d)), 0);
   state.filtered.forEach(r => {const key=bucketKey(r.date); sums.set(key,(sums.get(key)||0)+r.revenue);});
@@ -139,13 +140,26 @@ function downloadCsv() {
   const blob=new Blob(['\ufeff'+lines.map(row=>row.map(cell).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`매장판매실적_${getRange().join('_')}.csv`;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
+function configureDates() {
+  const dates = state.data.map(r=>r.date).sort();
+  state.range = dates.length ? [dates[0],dates[dates.length-1]] : ['2026-07-01','2026-09-30'];
+  const months = [...new Set(dates.map(d=>d.slice(0,7)))];
+  $('#period').innerHTML='<option value="all">전체 기간</option>'+months.map(m=>`<option value="${m}">${m.slice(0,4)}년 ${+m.slice(5)}월</option>`).join('')+'<option value="custom">직접 설정</option>';
+  ['start-date','end-date'].forEach((id,i)=>{const el=$(`#${id}`);el.min=state.range[0];el.max=state.range[1];el.value=state.range[i];});
+  const first=state.range[0],last=state.range[1];
+  $('.page-footer>span:last-child').textContent=`${first.slice(0,7)} — ${last.slice(0,7)} · SALES REPORT`;
+}
 async function init() {
   $('#export').disabled=true;
   try {
-    const response=await fetch('data/sales.json');
-    if(!response.ok)throw new Error(`HTTP ${response.status}`);
-    state.data=await response.json();
-    if(!Array.isArray(state.data)||state.data.length===0)throw new Error('No sales data');
+    const {rows,source}=await window.loadSalesData();
+    state.data=rows;
+    configureDates();
+    $('#connection-status').innerHTML=`<i></i> ${source==='supabase'?'Supabase DB 연결됨':'엑셀 데이터 · 저장본'}`;
+    $('#source-badge').textContent=source==='supabase'?'SUPABASE DATA CONNECTED':'EXCEL SNAPSHOT';
+    $('#source-description').textContent=source==='supabase'?`출처: Supabase store_sales · 현재 조회 ${fmt(rows.length)}행. 최초 가져오기: 매장판매실적.xlsx.`:'출처: 매장판매실적.xlsx · 2026.07.01–2026.09.30 · 원본 1,017행.';
+    $('#loaded-at').textContent=`${new Intl.DateTimeFormat('ko-KR',{dateStyle:'short',timeStyle:'medium',timeZone:'Asia/Seoul'}).format(new Date())} (한국 시간) 조회`;
+    if(source==='supabase'&&!rows.length) $('#source-description').textContent+=' 데이터가 비어 있다면 초기화 SQL 및 읽기 정책을 확인하세요.';
     fillOptions('#region',state.data.map(r=>r.region),'전체 지역');
     fillOptions('#store',state.data.map(r=>r.store),'전체 매장');
     fillOptions('#category',state.data.map(r=>r.category),'전체 상품군');
@@ -156,7 +170,7 @@ async function init() {
     $('#reset').addEventListener('click',()=>{
       ['period','region','category'].forEach(id=>$(`#${id}`).value='all');
       fillOptions('#store',state.data.map(r=>r.store),'전체 매장');$('#store').value='all';
-      $('#start-date').value='2026-07-01';$('#end-date').value='2026-09-30';$('#search').value=''; update();
+      $('#start-date').value=state.range[0];$('#end-date').value=state.range[1];$('#search').value=''; update();
     });
     document.querySelectorAll('[data-grain]').forEach(button=>button.addEventListener('click',()=>{
       state.grain=button.dataset.grain;
@@ -173,6 +187,7 @@ async function init() {
     let resizeFrame;
     window.addEventListener('resize',()=>{cancelAnimationFrame(resizeFrame);resizeFrame=requestAnimationFrame(()=>{const [s,e]=getRange();renderTrend(s,e,s&&e&&s<=e);});});
     $('#loading').hidden=true;$('#dashboard').hidden=false; update();
-  }catch(error){$('#loading').hidden=true;$('#error').hidden=false;$('#error').textContent='데이터를 불러오지 못했습니다. HTTP 서버로 실행 중인지 확인한 뒤 새로고침해주세요.';console.error(error);}
+  }catch(error){$('#loading').hidden=true;$('#dashboard').hidden=true;$('#error').hidden=false;$('#error').textContent=error.name==='AbortError'?'데이터 조회 시간이 초과되었습니다. 다시 불러와주세요.':`데이터를 불러오지 못했습니다. ${error.message}`;$('#connection-status').textContent='데이터 연결 실패';$('#source-badge').textContent='CONNECTION FAILED';}
 }
+$('#refresh').addEventListener('click',()=>window.location.reload());
 init();

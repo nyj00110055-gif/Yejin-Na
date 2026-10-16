@@ -1,0 +1,11 @@
+'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+const root = path.resolve(__dirname, '..');
+const rows = JSON.parse(fs.readFileSync(path.join(root, 'data/sales.json'), 'utf8'));
+const keys = ['id','date','region','store','category','plan','quantity','revenue','staff'];
+const sql = value => value === null ? 'null' : typeof value === 'number' ? String(value) : "'" + value.replaceAll("'", "''") + "'";
+const values = rows.map(row => '('+keys.map(key=>sql(row[key])).join(', ')+')').join(',\n');
+const script = `-- Original Excel records; duplicates preserved as separate source row IDs.\n-- Re-running does not overwrite edits or duplicate existing IDs.\nbegin;\ninsert into public.store_sales (${keys.join(', ')}) values\n${values}\non conflict (id) do nothing;\ncommit;\n\n-- On the initial import: 1017 rows, 515999400 revenue, 1722 quantity, 5 missing.\nselect count(*) as records, sum(revenue) as revenue, sum(quantity) as quantity,\n       count(*) filter (where quantity is null) as missing_quantity,\n       min(date) as first_date, max(date) as last_date\nfrom public.store_sales;\n`;
+fs.writeFileSync(path.join(root, 'supabase/002_seed.sql'), script);
+console.log(`Generated SQL for ${rows.length} sales rows`);

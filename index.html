@@ -6,6 +6,8 @@
   <meta name="theme-color" content="#7161ef">
   <title>매장 인사이트 · 판매 실적 대시보드</title>
   <link rel="stylesheet" href="styles.css">
+  <script src="runtime-config.js" defer></script>
+  <script src="data-source.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -18,10 +20,10 @@
       <a href="#store-section" class="nav-item"><span>▥</span>매장별 실적</a>
       <a href="#transactions" class="nav-item"><span>≡</span>판매 내역</a>
     </nav>
-    <div class="sidebar-bottom"><div class="source-card"><span class="source-icon">▤</span><b>데이터와 가까워지세요</b><p>매장의 흐름을 읽고,<br>다음 기회를 발견하세요.</p><span class="source-badge">EXCEL DATA CONNECTED</span></div><div class="profile"><span class="avatar">SA</span><div>Sales Analyst<small>분석 워크스페이스</small></div><span class="status-dot"></span></div></div>
+    <div class="sidebar-bottom"><div class="source-card"><span class="source-icon">▤</span><b>데이터와 가까워지세요</b><p>매장의 흐름을 읽고,<br>다음 기회를 발견하세요.</p><span class="source-badge"><span id="source-badge">CONNECTING DATA</span></span></div><div class="profile"><span class="avatar">SA</span><div>Sales Analyst<small>분석 워크스페이스</small></div><span class="status-dot"></span></div></div>
   </aside>
   <div class="app-shell">
-    <header class="topbar"><div><span class="muted">워크스페이스</span><span class="slash">/</span><span>대시보드</span></div><span class="connected"><i></i> 엑셀 데이터 연결됨</span></header>
+    <header class="topbar"><div><span class="muted">워크스페이스</span><span class="slash">/</span><span>대시보드</span></div><span class="connected" id="connection-status" role="status"><i></i> 데이터 연결 중</span></header>
     <main id="overview">
       <div class="page-heading"><div><div class="eyebrow">SALES OVERVIEW</div><h1>판매 실적 대시보드<span class="heading-dot">.</span></h1><p>숫자로 살펴보는 우리 매장의 성장 이야기</p></div><button id="export" class="button"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></svg> CSV 다운로드</button></div>
       <section class="filters" aria-label="판매 내역 필터">
@@ -35,6 +37,7 @@
       </section>
       <div class="section-meta"><span id="range-label"></span><span><i class="tiny-dot"></i> <b id="record-count">0</b>건의 판매 데이터</span></div>
       <div id="error" class="error" role="alert" hidden></div>
+      <div class="data-refresh"><span id="loaded-at"></span><button id="refresh" class="button" type="button">↻ 데이터 새로고침</button></div>
       <div id="loading" class="loading" role="status">판매 데이터를 불러오는 중입니다…</div>
       <div id="dashboard" hidden>
         <section id="kpis" class="kpis" aria-label="주요 실적 지표" aria-live="polite"></section>
@@ -47,7 +50,7 @@
           <section class="panel region-panel"><div class="panel-head"><div><h2>지역별 실적</h2><p>지역마다 다른 판매의 움직임</p></div><span class="panel-symbol">◎</span></div><div id="region-chart"></div><div class="panel-footer">동일 지역의 표기를 통합하여 집계했습니다</div></section>
         </div>
         <section id="transactions" class="panel transactions"><div class="panel-head"><div><h2>판매 상세 내역 <span id="table-badge" class="badge"></span></h2><p>개별 판매 기록을 자세히 살펴보세요</p></div><label class="search"><span>⌕</span><input id="search" type="search" placeholder="매장, 요금제, 담당자 검색" aria-label="판매 내역 검색"></label></div><div class="table-scroll"><table><thead><tr><th><button data-sort="date">판매일 <span>↕</span></button></th><th>지역</th><th>매장명</th><th>상품군</th><th>요금제</th><th class="number"><button data-sort="quantity">수량 <span>↕</span></button></th><th class="number"><button data-sort="revenue">매출액 <span>↕</span></button></th><th>담당자</th></tr></thead><tbody id="table-body"></tbody></table></div><div class="table-footer"><span id="page-info"></span><div class="pagination"><button id="prev" aria-label="이전 페이지">‹</button><span id="page-number"></span><button id="next" aria-label="다음 페이지">›</button></div></div></section>
-        <details class="data-notes"><summary><span>ⓘ</span> 데이터 안내 및 처리 기준 <span id="quality-summary"></span></summary><p>출처: 매장판매실적.xlsx · 2026.07.01–2026.09.30 · 원본 1,017행. 날짜 형식과 지역명, 원/쉼표가 포함된 금액 표기를 통일했습니다. 중복으로 보이는 행도 삭제하지 않고 원본 그대로 집계했습니다.</p><p>수량 누락 5건은 수량 합계와 단위당 매출 계산에서 제외하며, 해당 행의 매출은 총매출에 포함합니다. 단위당 매출은 수량이 있는 행의 매출 합계 ÷ 수량 합계입니다. 요금제 미기재는 ‘미기재’로 표시합니다. 매출 추이는 주별 선택 시 월요일 시작 기준이며, 첫 주와 마지막 주는 선택 기간의 일부만 포함할 수 있습니다.</p><p>상단 필터는 모든 지표와 차트에 적용됩니다. 검색은 상세 표와 CSV에 추가 적용되며, CSV에는 현재 검색 조건의 전체 행이 포함됩니다.</p></details>
+        <details class="data-notes"><summary><span>ⓘ</span> 데이터 안내 및 처리 기준 <span id="quality-summary"></span></summary><p><span id="source-description">원본: 매장판매실적.xlsx · 2026.07.01–2026.09.30 · 1,017행.</span> 날짜 형식과 지역명, 원/쉼표가 포함된 금액 표기를 통일했습니다. 중복으로 보이는 행도 삭제하지 않고 원본 그대로 집계했습니다.</p><p>수량 누락 건은 수량 합계와 단위당 매출 계산에서 제외하며, 해당 행의 매출은 총매출에 포함합니다. 단위당 매출은 수량이 있는 행의 매출 합계 ÷ 수량 합계입니다. 요금제 미기재는 ‘미기재’로 표시합니다. 매출 추이는 주별 선택 시 월요일 시작 기준이며, 첫 주와 마지막 주는 선택 기간의 일부만 포함할 수 있습니다.</p><p>상단 필터는 모든 지표와 차트에 적용됩니다. 검색은 상세 표와 CSV에 추가 적용되며, CSV에는 현재 검색 조건의 전체 행이 포함됩니다.</p></details>
       </div>
       <footer class="page-footer"><span class="footer-brand">매장 인사이트</span><span>작은 숫자에서 발견하는 더 큰 가능성.</span><span>2026 Q3 · SALES REPORT</span></footer>
     </main>

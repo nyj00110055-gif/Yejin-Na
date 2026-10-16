@@ -59,4 +59,21 @@ node scripts/build.cjs
 python3 -m http.server 8000 --bind 0.0.0.0 --directory dist
 ```
 
-배포 산출물은 `index.html`, `styles.css`, `app.js`, `data/sales.json`입니다. 테스트 코드와 데이터 변환 도구, README는 포함하지 않습니다.
+배포 산출물은 `index.html`, `styles.css`, `app.js`, `data-source.js`, `runtime-config.js`, `data/sales.json`입니다. 테스트 코드와 데이터 변환 도구, README는 포함하지 않습니다.
+
+## Supabase 실제 데이터 연결
+
+설정과 데이터 입력 순서는 [Supabase 연결 안내](supabase/README.md)를 확인하세요. `SUPABASE_URL`과 `SUPABASE_PUBLISHABLE_KEY`를 Vercel 환경변수로 지정하면 빌드된 대시보드가 `public.store_sales`에서 모든 행을 페이지별로 조회합니다. `runtime-config.js`는 공개 publishable key만 포함하며 secret/service_role 키를 허용하지 않습니다. Vercel 빌드의 기본 연결은 제공된 Supabase 프로젝트의 공개 설정입니다. `SALES_DATA_SOURCE=snapshot`으로 저장본 모드를 명시할 수 있고, 빌드하지 않은 루트 실행은 저장본 모드입니다. 화면에서 현재 출처를 구분합니다.
+
+DB의 새 데이터를 확인하려면 **데이터 새로고침**을 누르세요. 실제 DB 연결 오류를 Excel 데이터로 숨기지 않습니다. 판매 기간 필터는 DB의 날짜 범위에서 생성합니다. SQL과 테스트·변환 도구는 Vercel 배포 파일에 포함하지 않습니다.
+
+Supabase 브라우저 연결 테스트(실제 DB 대신 모의 HTTP 응답 사용):
+
+```sh
+SALES_DATA_SOURCE=snapshot node scripts/build.cjs
+# 별도 터미널에서 dist를 8001 포트로 제공합니다.
+python3 -m http.server 8001 --directory dist
+DASHBOARD_URL=http://127.0.0.1:8001 CHROMIUM_PATH=/usr/bin/chromium node tests/supabase.cjs
+```
+
+로컬 Supabase 모드 빌드는 실제 공개 키를 프로세스 환경변수로 설정한 뒤 `node scripts/build.cjs`를 실행하세요. `.env` 파일은 자동 로드하지 않습니다. 생성된 `dist/runtime-config.js`와 로컬 `.env`는 커밋하지 않습니다. 모의 테스트는 실제 프로젝트의 키, RLS, 데이터 입력 또는 Vercel 배포 성공을 검증하지 않습니다.
